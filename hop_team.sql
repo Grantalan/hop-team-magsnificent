@@ -83,10 +83,21 @@ where npi = 1649269366;
 
 
 
--- Overall query:
-
-with primary_code as (
-select npi, 
+-- Overall query/materialized view:
+CREATE MATERIALIZED view TN_Referrals
+AS
+with nash_cbsa as (
+	select * 
+	from zip_cbsa z
+	inner join nppes n
+	--on LEFT(CAST(z.zip AS VARCHAR(10)), 5) = CAST(n.address_postal_code  AS VARCHAR(10))
+	ON LEFT(n.address_postal_code::TEXT, 5) = z.zip::TEXT
+	----  Only referrals in the Nashville CBSA.
+	where address_state_name in ('TN','Tennessee')
+	and z.cbsa = 34980
+	),
+    primary_code as (
+		select npi, 
 		entity_type_code,
 		first_name,
 		last_name,
@@ -109,45 +120,91 @@ select npi,
 			when healthcare_primary_taxonomy_switch_14 in ('Y','X') then healthcare_taxonomy_code_14
 			when healthcare_primary_taxonomy_switch_15 in ('Y','X') then healthcare_taxonomy_code_15
 		end as code 
-from nppes
+from nash_cbsa
 ),
 primary_spec as (
 select *
 from primary_code p
 inner join nucc n 
 using(code)
-where p.address_state_name in ('TN', 'Tennessee')
 ),
 from_npis_of_interest as (
-select p.npi, p.first_name, p.last_name
+select p.npi as from_npi, p.first_name, p.last_name, p.grouping, p.classification, p.specialization
 from primary_spec p
 -- For the referring providers, filter to Primary Care Physicians (PCPs) only: You can look for classifications of "Family Medicine", "Internal Medicine", "Pediatrics", and "General Practice".
 where classification in ('Family Medicine', 'Internal Medicine', 'Pediatrics', 'General Practice')
 and entity_type_code = 1
 ),
 to_npis_of_interest as (
-select p.npi, p.organization_name 
+select p.npi as to_npi, p.organization_name 
 from primary_spec p
 -- For the receiving providers, filter to hospitals.
 where grouping ilike '%hospital%'
 and entity_type_code = 2
 )
-select h.from_npi, f.first_name || ' ' || f.last_name as providername, h.to_npi, t.organization_name, h.patient_count, h.transaction_count, h.average_day_wait, h.std_day_wait
+select h.from_npi, f.first_name || ' ' || f.last_name as providername, f.grouping, f.classification, f.specialization, h.to_npi, t.organization_name, h.patient_count, h.transaction_count, h.average_day_wait, h.std_day_wait
 from hop_team h
 inner join from_npis_of_interest f
-on h.from_npi = f.npi
+on h.from_npi = f.from_npi 
 inner join to_npis_of_interest t
-on h.to_npi = t.npi
+on h.to_npi = t.to_npi
 -- To avoid incidental or low-volume referrals, look for significant referral relationships, meaning transaction_count >= 50 and avg_day_wait < 5
 where h.transaction_count >= 50
 and h.average_day_wait < 50;
 
 
-
-  --  Only referrals in the Nashville CBSA.
- -- Figure out how to join zip_cbsa table with nppes table
+drop materialized view TN_Referrals;
 
 
-select * from nppes limit 5;
+select * from TN_Referrals
+order by providername, organization_name;
 
-select * from zip_cbsa limit 5;
+select distinct organization_name from TN_Referrals;
+
+-- Identify PCPs who refer patients and the distribution of their referrals across major hospitals.
+select organization_name, sum(patient_count) as total_patients_referred, sum(transaction_count) as total_transactions
+from TN_Referrals
+group by organization_name
+order by total_patients_referred desc;
+
+select organization_name, sum(patient_count) as total_patients_referred, sum(transaction_count) as total_transactions
+from TN_Referrals
+group by organization_name
+order by total_transactions desc;
+-- Vandy gets the most unique patients referred, as well as the most total referral transactions.
+
+
+-- Find PCPs who refer few or no patients to Vanderbilt but send patients to competitor hospitals.
+with low_vandy as (
+(
+-- all providers that had NO referrals to Vandy
+(select from_npi
+from TN_Referrals)
+except
+(select from_npi
+	from TN_Referrals
+	where organization_name = 'VANDERBILT UNIVERSITY MEDICAL CENTER')
+)
+union
+-- all providers that had low referrals to Vandy (less than 20 unique patients)
+(select from_npi
+	from TN_Referrals
+	where organization_name = 'VANDERBILT UNIVERSITY MEDICAL CENTER'
+	and patient_count < 20)
+)
+select *
+from TN_Referrals
+inner join low_vandy
+using(from_npi)
+order by providername, organization_name;
+
+
+-- Aggregate by PCP specialty to understand which specialties are underrepresented in Vanderbilt’s referral network.
+select specialization, count(providername)
+from TN_Referrals
+where organization_name = 'VANDERBILT UNIVERSITY MEDICAL CENTER'
+and not specialization is null
+group by specialization
+order by count(providername);
+-- Adult Congenital Heart Disease would be an area of growth for Vanderbilt's referral network, with only 1 referring provider in our dataset. 
+
