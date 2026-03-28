@@ -9,7 +9,6 @@ def load_data(path:str):
     return data
 
 hop_team_nashville_df = load_data('data/hop_team_nashville.csv')
-hop_team_community_df = load_data('data/hop_team_community.csv')
 
 #-------------------------------------------------
 
