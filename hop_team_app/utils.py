@@ -9,11 +9,10 @@ def load_data(path:str):
     return data
 
 hop_team_nashville_df = load_data('data/hop_team_nashville.csv')
-print(hop_team_nashville_df.columns)
 #-------------------------------------------------
 
 # Get list of Nashville PCP Specialties
 pcp_specialization_list = hop_team_nashville_df['specialization_cleaned'].unique()
 
 # Get list of Nashville Hospitals
-hospital_list = hop_team_nashville_df['hospital'].unique()
+hospital_list = hop_team_nashville_df['organization_name'].unique()
