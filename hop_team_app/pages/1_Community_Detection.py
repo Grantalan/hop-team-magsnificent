@@ -31,7 +31,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.image('images/community_detection.jpg')
+st.image('../images/community_detection.jpg')
 
 st.divider()
 
@@ -39,7 +39,7 @@ st.divider()
 
 st.header('PCP -> Referral -> Hospital')
 
-st.image('images/node_structure.png')
+st.image('../images/node_structure.png')
 
 st.dataframe(
     data=utils.community_detection_df,
