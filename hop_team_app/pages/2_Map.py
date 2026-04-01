@@ -109,8 +109,10 @@ def highlight_growth_areas(value):
         return '' 
 
 st.write("Top specializations:")
+
 top_spec = final_data.groupby('specialization_cleaned')['transaction_count'].sum().sort_values(ascending=False).head(5).reset_index().rename(columns={'specialization_cleaned':'Specialization','transaction_count':'Total Referrals'})
 top_spec['Total Referrals'] = top_spec['Total Referrals'].apply(lambda x: "{:,}".format(x))
 
 st.dataframe(top_spec.style.map(highlight_growth_areas, subset=(top_spec.index[-2:], 'Specialization')), use_container_width=True, hide_index=True)
 
+st.caption("A specialization is highlighted in yellow if it is one of Vanderbilt's strongest specializations (in terms of referral count) and is ranked #4 or #5 in the selected community. These could represent possible areas of growth for Vanderbilt's referral network.")
